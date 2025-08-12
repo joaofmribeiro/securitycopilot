@@ -1,0 +1,40 @@
+Descriptor:
+  Name: C2C-CobaltStrike-Patterns 
+  DisplayName: C2C Cobalt Strike Patterns 
+  Description: Search for command-and-control traffic patterns associated with the Cobalt Strike framework across multiple workspaces
+
+SkillGroups:
+  - Format: KQL
+    Skills:
+      - Name: GetC2CCobaltStrikePatterns 
+        DisplayName: C2C Cobalt Strike Patterns
+        Description: Search for command-and-control traffic patterns associated with the Cobalt Strike framework across all tenants
+        Inputs:
+          - Name: hourorday
+            Description: hours (h) or days (d)
+            Required: false
+            DefaultValue: d
+          - Name: unit
+            Description: number of hours or days
+            Required: false
+            DefaultValue: 2
+          - Name: User
+            Description: The user associated with the alert
+            Required: false
+          - Name: Device
+            Description: The device associated with the alert
+            Required: false            
+        Settings:
+          Target: Defender
+          Template: |-
+          union workspace("workspace1").DeviceNetworkEvents,
+                workspace("workspace2").DeviceNetworkEvents
+                | where Timestamp >= ago({{unit}}{{hourorday}})
+                | where ActionType == "SslConnectionInspected" or InitiatingProcessTokenElevation == @"TokenElevationTypeFull"
+                | extend AdditionalFields = todynamic(AdditionalFields)
+                | extend issuer = tostring(AdditionalFields.issuer), subject = tostring(AdditionalFields.subject), direction = tostring(AdditionalFields.direction)
+                | where direction == "Out" and not(ipv4_is_private(RemoteIP))
+                | where AdditionalFields.issuer has_any ("AsyncRAT Server", "Major Cobalt Strike" "Laplas.app") or AdditionalFields.subject has_any ("AsyncRAT Server", "Major Cobalt Strike", "Quasar Server CA", "Laplas.app", "Mythic", "DcRat", "VenomRAT", "BitRAT") or RemoteUrl contains "graph.microsoft.com" or RemoteUrl contains "beacon" or RemoteUrl contains "strike" or RemoteUrl contains "cobalt"
+                | project Timestamp, DeviceName, LocalIP, RemoteIP, RemotePort, RemoteUrl
+                | sort by Timestamp desc
+                     
