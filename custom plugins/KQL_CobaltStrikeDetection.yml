@@ -25,7 +25,7 @@ SkillGroups:
             Description: The device associated with the alert
             Required: false            
         Settings:
-          Target: Defender
+          Target: Sentinel
           Template: |-
           union workspace("workspace1").DeviceNetworkEvents,
                 workspace("workspace2").DeviceNetworkEvents
