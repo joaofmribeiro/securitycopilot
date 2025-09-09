@@ -6,7 +6,7 @@ Content:
 - Custom Promptbooks
 - Custom Plugins
 
-Author: João Ribeiro
+
 
 
 
