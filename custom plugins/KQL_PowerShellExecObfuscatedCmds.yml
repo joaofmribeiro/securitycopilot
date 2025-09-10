@@ -1,0 +1,67 @@
+Descriptor:
+  Name: Get-PSObfuscatedCommands 
+  DisplayName: Powershell obfuscated execution
+  Description: PowerShell execution that contains obfuscated commands across all devices in all Defender for Endpoint devices
+SkillGroups:
+  - Format: KQL
+    Skills:
+      - Name: Get-PSObfuscatedCommands
+        DisplayName: Powershell obfuscated execution
+        Description: PowerShell execution that contains obfuscated commands across all devices in all Defender for Endpoint devices
+        Inputs:
+          - Name: hourorday
+            Description: hours (h) or days (d)
+            Required: false
+            DefaultValue: d
+          - Name: unit
+            Description: number of hours or days
+            Required: false
+            DefaultValue: 2
+          - Name: User
+            Description: The user associated with the alert
+            Required: false
+          - Name: Device
+            Description: The device associated with the alert
+            Required: false            
+        Settings:
+          Target: Sentinel
+          Template: |-
+            let window = 30d;
+            // Define the function for calculating average and standard deviation
+            let calc_cmd_avg_stdev = (
+            union
+            workspace('workspace1').DeviceProcessEvents,
+            workspace('workspace2').DeviceProcessEvents
+            | where Timestamp >= ago({{unit}}{{hourorday}})
+            | where InitiatingProcessFileName has "powershell" or InitiatingProcessFileName has "pwsh"
+            | extend cmd_length = strlen(InitiatingProcessCommandLine)
+            | where cmd_length > 0
+            | summarize avg_cmd_length = avg(cmd_length), stdev_cmd_length = stdev(cmd_length) by InitiatingProcessFileName
+            | project InitiatingProcessFileName, avg_cmd_length, stdev_cmd_length,
+            STDEV_1 = avg_cmd_length + stdev_cmd_length,
+            STDEV_2 = avg_cmd_length + (stdev_cmd_length * 2),
+            STDEV_3 = avg_cmd_length + (stdev_cmd_length * 3)
+            );
+            //Main query using the calculated thresholds
+            union 
+            workspace('workspace1').DeviceProcessEvents,
+            workspace('workspace2').DeviceProcessEvents
+            | where Timestamp >= ago({{unit}}{{hourorday}})
+            | where InitiatingProcessFileName has "powershell" or InitiatingProcessFileName has "pwsh"
+            | extend cmd_length = strlen(InitiatingProcessCommandLine)
+            | where cmd_length >= toscalar(calc_cmd_avg_stdev | project avg_cmd_length)
+            | extend STDEV_Calc = case(
+            cmd_length >= toscalar(calc_cmd_avg_stdev | project STDEV_3), "3 standard deviations above mean",
+            cmd_length >= toscalar(calc_cmd_avg_stdev | project STDEV_2), "2 standard deviations above mean",
+            cmd_length >= toscalar(calc_cmd_avg_stdev | project STDEV_1), "1 standard deviation above mean",
+            //Value between mean and one standard deviation
+            )
+            | summarize count() by InitiatingProcessFileName, InitiatingProcessCommandLine, cmd_length, STDEV_Calc,
+            avg_cmd_length = toscalar(calc_cmd_avg_stdev | project avg_cmd_length),
+            stdev_cmd_length = toscalar(calc_cmd_avg_stdev | project stdev_cmd_length),
+            STDEV_1 = toscalar(calc_cmd_avg_stdev | project STDEV_1),
+            STDEV_2 = toscalar(calc_cmd_avg_stdev | project STDEV_2),
+            STDEV_3 = toscalar(calc_cmd_avg_stdev | project STDEV_3)
+            | order by cmd_length desc
+
+                     
